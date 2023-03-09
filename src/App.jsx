@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   createPublicClient,
   http,
@@ -21,7 +21,114 @@ const walletClient = createWalletClient({
   transport: custom(window.ethereum)
 });
 
+const contract = {
+  abi: [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "method",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "count",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        }
+      ],
+      "name": "Count",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "count",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "decrement",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "increment",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  address: "0x1064191A9b2981CC3Af7038E1c4F24B244bb8152"
+};
+
 export default function App() {
+  const [count, setCount] = useState(0);
+  const [address, setAddress] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [logMessage, setLogMessage] = useState("");
+
+  const handleConnectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        setLogMessage("");
+        const chainId = await publicClient.getChainId();
+        console.log("chainId:", chainId);
+        if (chainId !== 80001) {
+          // switch to polygon testnet
+          await walletClient.switchChain({ id: 80001 });
+        }
+        const [address] = await walletClient.requestAddresses();
+        setAddress(address);
+        setIsConnected(true);
+        publicClient.watchContractEvent({
+          ...contract,
+          eventName: 'Count',
+          onLogs: log => {
+            console.log(log);
+          },
+          onError: error => {
+            console.log(error);
+          }
+        });
+      } catch (err) {
+        console.log("Error in connecting wallet:", err);
+        setLogMessage(err.message);
+      }
+    } else {
+      alert("Please install Metamask");
+    }
+  };
   const signMessage = async () => {
     const [address] = await walletClient.getAddresses();
     const account = getAccount(address);
@@ -59,6 +166,12 @@ export default function App() {
     const transaction = await publicClient.getTransaction({
       hash: block.transactions[0]
     });
+    const count = await publicClient.readContract({
+      ...contract,
+      functionName: "count"
+    });
+    console.log("count:", count);
+    setCount(count.toString());
 
     console.log("blockNumber:", blockNumber.toString());
     console.log("chainId:", chainId);
@@ -69,14 +182,67 @@ export default function App() {
 
   useEffect(() => {
     getData();
-  }, []);
+  }, [isConnected]);
+
+  const handleIncrement = async () => {
+    try {
+      const account = getAccount(address); // like signer for transactions
+      const { request } = await publicClient.simulateContract({
+        ...contract,
+        functionName: "increment",
+        account
+      });
+      await walletClient.writeContract(request);
+    } catch (err) {
+      console.log("Error in increment:", err);
+      setLogMessage(err.message);
+    }
+  };
+
+  const handleDecrement = async () => {
+    try {
+      const account = getAccount(address); // like signer for transactions
+      const { request } = await publicClient.simulateContract({
+        ...contract,
+        functionName: "decrement",
+        account
+      });
+      await walletClient.writeContract(request);
+    } catch (err) {
+      console.log("Error in decrement:", err);
+      setLogMessage(err.message);
+    }
+  };
 
   return (
     <div className="App">
-      <h1>Hello CodeSandbox</h1>
-      <button onClick={sendTransaction}>Send ETH </button>
-      <button onClick={signMessage}>Sign</button>
-      <h2>Start editing to see some magic happen!</h2>
+      <h1>Counter Dapp</h1>
+      {
+        isConnected ? (
+          <>
+            <h4>Current Count: {count}</h4>
+            {/* increment and decrement buttons */}
+            <button onClick={handleIncrement}>Increment</button>
+            <button onClick={handleDecrement}>Decrement</button>
+            <br />
+            <button onClick={sendTransaction}>Send ETH </button>
+            <button onClick={signMessage}>Sign</button></>
+        ) : (
+          <button onClick={handleConnectWallet}>Connect Wallet</button>
+        )
+      }
+
+      <footer style={{ marginTop: "2rem" }}>
+        {logMessage && (<p>{logMessage}</p>)}
+        <hr />
+        <a
+          href="https://github.com/Salmandabbakuti"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          © {new Date().getFullYear()} Salman Dabbakuti. Powered by viem
+        </a>
+      </footer>
     </div>
   );
-}
+};
