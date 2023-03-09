@@ -22,6 +22,16 @@ const walletClient = createWalletClient({
 });
 
 export default function App() {
+  const signMessage = async () => {
+    const [address] = await walletClient.getAddresses();
+    const account = getAccount(address);
+    const signature = await walletClient.signMessage({
+      account,
+      data: "Hello there, viem!"
+    });
+
+    console.log("signature:", signature);
+  };
   const sendTransaction = async () => {
     // const [address] = await walletClient.getAddresses();
     const [address] = await walletClient.requestAddresses();
@@ -65,6 +75,7 @@ export default function App() {
     <div className="App">
       <h1>Hello CodeSandbox</h1>
       <button onClick={sendTransaction}>Send ETH </button>
+      <button onClick={signMessage}>Sign</button>
       <h2>Start editing to see some magic happen!</h2>
     </div>
   );
